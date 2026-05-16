@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>voix by SWAYAM</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            height: 100vh;
+            width: 100vw;
+        }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #videoElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 60%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror */
+            opacity: 0.6;
+            z-index: 1;
+        }
+        #canvasOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 60%;
+            z-index: 2;
+        }
+        #uiPanel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 40%;
+            background: linear-gradient(to top, #000 0%, #111 100%);
+            border-top: 2px solid #333;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            padding: 12px 16px;
+            justify-content: space-between;
+        }
+        .infoRow {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 16px;
+        }
+        .label { color: #888; font-weight: 600; min-width: 60px; }
+        .value { color: #fff; font-weight: 700; font-size: 18px; flex: 1; text-align: right; }
+        .morse { color: #0ff; font-family: monospace; letter-spacing: 4px; }
+        .letter { color: #ff0; }
+        .word { color: #f0f; font-size: 22px; }
+        .message { color: #fff; font-size: 16px; opacity: 0.9; }
+        .status { color: #0f0; }
+        .status.alert { color: #f00; animation: pulse 0.5s infinite; }
+        .status.warn { color: #fa0; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        #startScreen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+        #startScreen h1 { color: #0f0; font-size: 28px; margin-bottom: 12px; }
+        #startScreen p { color: #aaa; font-size: 16px; margin-bottom: 24px; line-height: 1.5; max-width: 320px; }
+        .btn {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 16px 32px;
+            font-size: 20px;
+            font-weight: 800;
+            border-radius: 12px;
+            cursor: pointer;
+            margin: 8px;
+            width: 260px;
+            box-shadow: 0 0 20px rgba(0,255,0,0.3);
+        }
+        .btn:active { transform: scale(0.96); }
+        .btn.secondary { background: #333; color: #fff; font-size: 16px; padding: 12px 24px; }
+
+        #controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .ctrlBtn {
+            flex: 1;
+            background: #222;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .ctrlBtn:active { background: #444; }
+
+        #calibrationOverlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        #calibrationOverlay h2 { color: #ff0; font-size: 24px; margin-bottom: 20px; }
+        #calibrationOverlay p { color: #fff; font-size: 18px; margin-bottom: 30px; padding: 0 20px; }
+        .calValue { color: #0ff; font-size: 32px; font-weight: 800; }
+
+        #earBar {
+            width: 100%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+        #earFill {
+            height: 100%;
+            width: 50%;
+            background: #0f0;
+            transition: width 0.1s, background 0.2s;
+        }
+        #earFill.closed { background: #f00; }
+    </style>
+</head>
+<body>
+
+<div id="startScreen">
+    <h1>👁️ Grandfather Voice</h1>
+    <p>Speak using eye blinks.<br>Short blink = DOT (·)<br>Long blink = DASH (–)<br>6 dots = End Sentence</p>
+    <button class="btn" onclick="startApp()">▶ START CAMERA</button>
+    <button class="btn secondary" onclick="startApp(true)">▶ START (No Voice)</button>
+    <p style="font-size:12px;color:#666;margin-top:16px;">Place phone 30-50cm from face.<br>Ensure good lighting.</p>
+</div>
+
+<div id="calibrationOverlay">
+    <h2 id="calTitle">CALIBRATION</h2>
+    <p id="calText">Keep eye OPEN<br>and tap button</p>
+    <div class="calValue" id="calValue">--</div>
+    <button class="btn" id="calBtn" onclick="nextCalibrationStep()" style="margin-top:30px;">NEXT</button>
+</div>
+
+<div id="container">
+    <video id="videoElement" playsinline autoplay muted></video>
+    <canvas id="canvasOverlay"></canvas>
+    <div id="uiPanel">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+            <div class="status" id="statusText" style="font-size:14px;font-weight:700;">READY</div>
+            <div style="flex:1;"></div>
+            <div style="font-size:12px;color:#666;">EAR: <span id="earText">0.00</span></div>
+        </div>
+        <div id="earBar"><div id="earFill"></div></div>
+
+        <div class="infoRow">
+            <span class="label">MORSE</span>
+            <span class="value morse" id="morseVal">-</span>
+        </div>
+        <div class="infoRow">
+            <span class="label">WORD</span>
+            <span class="value word" id="wordVal">-</span>
+        </div>
+        <div class="infoRow">
+            <span class="label">MSG</span>
+            <span class="value message" id="msgVal">-</span>
+        </div>
+        <div class="infoRow">
+            <span class="label">LAST</span>
+            <span class="value status" id="lastVal">Waiting...</span>
+        </div>
+
+        <div id="controls">
+            <button class="ctrlBtn" onclick="forceLetter()">SPACE<br>Letter</button>
+            <button class="ctrlBtn" onclick="forceWord()">S<br>Speak Word</button>
+            <button class="ctrlBtn" onclick="clearAll()">C<br>Clear</button>
+            <button class="ctrlBtn" onclick="toggleCal()">CAL<br>Calibrate</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+// ========== CONFIG ==========
+const EAR_THRESHOLD_DEFAULT = 0.20;
+const DOT_MIN = 250, DOT_MAX = 700;
+const DASH_MIN = 800, DASH_MAX = 1500;
+const AUTO_LETTER_GAP = 2000;
+const AUTO_WORD_GAP = 4000;
+const SLEEP_THRESHOLD = 3000;
+const SENTENCE_DOTS = 6;
+
+// ========== MORSE CODE ==========
+const MORSE_CODE = {
+    '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'G','....':'H',
+    '..':'I','.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P',
+    '--.-':'Q','.-.':'R','...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X',
+    '-.--':'Y','--..':'Z','-----':'0','.----':'1','..---':'2','...--':'3','....-':'4',
+    '.....':'5','-....':'6','--...':'7','---..':'8','----.':'9'
+};
+
+// MediaPipe eye landmarks (468-point model)
+const LEFT_EYE = [362, 385, 387, 263, 373, 380];
+const RIGHT_EYE = [33, 160, 158, 133, 153, 144];
+
+// ========== STATE ==========
+let video, canvas, ctx;
+let faceMesh;
+let camera;
+let audioCtx;
+let useVoice = true;
+
+let eyeClosed = false;
+let blinkStartTime = 0;
+let lastBlinkEndTime = 0;
+let currentMorse = "";
+let currentWord = "";
+let fullMessage = "";
+let lastAction = "Waiting...";
+let systemStatus = "ACTIVE";
+
+let earThreshold = EAR_THRESHOLD_DEFAULT;
+let sensorOpenEAR = 0.30;
+let sensorClosedEAR = 0.10;
+let calibrated = false;
+let calStep = 0;
+let calSum = 0;
+let calCount = 0;
+let calInterval = null;
+
+// ========== AUDIO BEEP ==========
+function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+function beep(freq, duration) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration/1000);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration/1000);
+}
+
+// ========== SPEECH ==========
+function speak(text) {
+    if (!useVoice || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.9;
+    u.pitch = 1.0;
+    u.volume = 1.0;
+    window.speechSynthesis.speak(u);
+}
+
+// ========== EAR MATH ==========
+function dist(p1, p2) {
+    return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+}
+function eyeAspectRatio(landmarks, indices) {
+    const p = indices.map(i => landmarks[i]);
+    const A = dist(p[1], p[5]);
+    const B = dist(p[2], p[4]);
+    const C = dist(p[0], p[3]);
+    return (A + B) / (2.0 * C);
+}
+
+// ========== MORSE LOGIC ==========
+function classifyBlink(duration) {
+    if (duration < 100) return "NOISE";
+    if (duration >= DOT_MIN && duration <= DOT_MAX) return "DOT";
+    if (duration >= DASH_MIN && duration <= DASH_MAX) return "DASH";
+    if (duration > SLEEP_THRESHOLD) return "SLEEP";
+    return "INVALID";
+}
+
+function decodeMorse(m) {
+    return MORSE_CODE[m] || "?";
+}
+
+function processEndOfLetter() {
+    if (!currentMorse) return;
+
+    // 6 dots = end sentence
+    if (currentMorse === ".".repeat(SENTENCE_DOTS)) {
+        if (currentWord) { fullMessage += currentWord + " "; currentWord = ""; }
+        const sentence = fullMessage.trim();
+        if (sentence) {
+            lastAction = ">>> SENTENCE: " + sentence;
+            speak(sentence);
+            beep(1500, 800);
+        } else {
+            lastAction = ">>> SENTENCE END";
+        }
+        fullMessage = "";
+        currentMorse = "";
+        updateUI();
+        return;
+    }
+
+    const letter = decodeMorse(currentMorse);
+    currentWord += letter;
+    lastAction = "Letter: " + letter + " [" + currentMorse + "]";
+    speak(letter);
+    beep(1200, 200);
+    currentMorse = "";
+    updateUI();
+}
+
+function processEndOfWord() {
+    if (currentMorse) processEndOfLetter();
+    if (currentWord) {
+        fullMessage += currentWord + " ";
+        lastAction = "Word: " + currentWord;
+        speak(currentWord);
+        beep(1000, 400);
+        currentWord = "";
+        updateUI();
+    }
+}
+
+// ========== UI UPDATE ==========
+function updateUI() {
+    document.getElementById('morseVal').textContent = currentMorse || "-";
+    document.getElementById('wordVal').textContent = currentWord || "-";
+    const msg = fullMessage + currentWord;
+    document.getElementById('msgVal').textContent = msg.length > 30 ? "..." + msg.slice(-30) : (msg || "-");
+    document.getElementById('lastVal').textContent = lastAction;
+
+    const st = document.getElementById('statusText');
+    st.textContent = systemStatus;
+    st.className = "status";
+    if (systemStatus.includes("SLEEP")) st.classList.add("alert");
+    else if (systemStatus.includes("CLOSED")) st.classList.add("warn");
+}
+
+// ========== CALIBRATION ==========
+function toggleCal() {
+    const overlay = document.getElementById('calibrationOverlay');
+    if (overlay.style.display === 'flex') {
+        overlay.style.display = 'none';
+        return;
+    }
+    calStep = 0;
+    calSum = 0;
+    calCount = 0;
+    document.getElementById('calTitle').textContent = "CALIBRATION";
+    document.getElementById('calText').innerHTML = "Keep eye <b>OPEN</b><br>Stare at the screen";
+    document.getElementById('calValue').textContent = "--";
+    document.getElementById('calBtn').textContent = "START";
+    overlay.style.display = 'flex';
+}
+
+function nextCalibrationStep() {
+    const btn = document.getElementById('calBtn');
+
+    if (calStep === 0) {
+        // Start sampling OPEN
+        btn.textContent = "SAMPLING...";
+        btn.disabled = true;
+        calSum = 0; calCount = 0;
+        calInterval = setInterval(() => {
+            calSum += lastEAR;
+            calCount++;
+            document.getElementById('calValue').textContent = (calSum/calCount).toFixed(3);
+        }, 50);
+        setTimeout(() => {
+            clearInterval(calInterval);
+            sensorOpenEAR = calSum / calCount;
+            calStep = 1;
+            btn.disabled = false;
+            btn.textContent = "NEXT";
+            document.getElementById('calText').innerHTML = "Now <b>CLOSE</b> your eye<br>Hold it closed";
+            document.getElementById('calValue').textContent = "--";
+        }, 3000);
+    }
+    else if (calStep === 1) {
+        btn.textContent = "SAMPLING...";
+        btn.disabled = true;
+        calSum = 0; calCount = 0;
+        calInterval = setInterval(() => {
+            calSum += lastEAR;
+            calCount++;
+            document.getElementById('calValue').textContent = (calSum/calCount).toFixed(3);
+        }, 50);
+        setTimeout(() => {
+            clearInterval(calInterval);
+            sensorClosedEAR = calSum / calCount;
+            earThreshold = (sensorOpenEAR + sensorClosedEAR) / 2;
+            calibrated = true;
+            btn.disabled = false;
+            btn.textContent = "DONE";
+            document.getElementById('calText').innerHTML = 
+                `Open: ${sensorOpenEAR.toFixed(3)}<br>Close: ${sensorClosedEAR.toFixed(3)}<br>Threshold: ${earThreshold.toFixed(3)}`;
+            calStep = 2;
+        }, 3000);
+    }
+    else {
+        document.getElementById('calibrationOverlay').style.display = 'none';
+        lastAction = "Calibrated!";
+        updateUI();
+    }
+}
+
+// ========== CAREGIVER CONTROLS ==========
+function forceLetter() { processEndOfLetter(); }
+function forceWord() { processEndOfWord(); }
+function clearAll() {
+    currentMorse = "";
+    currentWord = "";
+    fullMessage = "";
+    lastAction = "Cleared";
+    updateUI();
+}
+
+// ========== MAIN LOOP ==========
+let lastEAR = 0.30;
+let lastTime = 0;
+
+function onResults(results) {
+    const now = performance.now();
+    const dt = now - lastTime;
+    lastTime = now;
+
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(-1, 1); // Mirror
+    ctx.translate(-canvas.width, 0);
+
+    // Draw camera frame
+    if (results.image) {
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+    }
+
+    let ear = lastEAR;
+    let faceDetected = false;
+
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        faceDetected = true;
+        const lm = results.multiFaceLandmarks[0];
+
+        // Draw eye landmarks
+        const drawPts = [...LEFT_EYE, ...RIGHT_EYE];
+        for (let idx of drawPts) {
+            const p = lm[idx];
+            const x = p.x * canvas.width;
+            const y = p.y * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = "#0f0";
+            ctx.fill();
+        }
+
+        // Calculate EAR
+        const leftEAR = eyeAspectRatio(lm, LEFT_EYE);
+        const rightEAR = eyeAspectRatio(lm, RIGHT_EYE);
+        ear = (leftEAR + rightEAR) / 2.0;
+        lastEAR = ear;
+    }
+
+    ctx.restore();
+
+    // Update EAR bar
+    const barPct = Math.max(0, Math.min(100, (ear / 0.40) * 100));
+    const bar = document.getElementById('earFill');
+    bar.style.width = barPct + "%";
+    bar.className = ear < earThreshold ? "closed" : "";
+    document.getElementById('earText').textContent = ear.toFixed(2);
+
+    // Blink detection logic
+    if (faceDetected && systemStatus !== "SLEEP MODE") {
+        const timeMs = performance.now();
+
+        // Auto decode when eye open
+        if (!eyeClosed) {
+            if (currentMorse && (timeMs - lastBlinkEndTime) > AUTO_LETTER_GAP) {
+                processEndOfLetter();
+                lastBlinkEndTime = timeMs;
+            }
+            if (currentWord && !currentMorse && (timeMs - lastBlinkEndTime) > AUTO_WORD_GAP) {
+                processEndOfWord();
+                lastBlinkEndTime = timeMs;
+            }
+        }
+
+        // Detect blink
+        if (ear < earThreshold) {
+            if (!eyeClosed) {
+                blinkStartTime = timeMs;
+                eyeClosed = true;
+                systemStatus = "EYE CLOSED";
+                updateUI();
+            }
+        } else {
+            if (eyeClosed) {
+                const duration = timeMs - blinkStartTime;
+                eyeClosed = false;
+                systemStatus = "ACTIVE";
+
+                const btype = classifyBlink(duration);
+
+                if (btype === "SLEEP") {
+                    systemStatus = "SLEEP MODE - Tap CAL";
+                    lastAction = "Sleep detected";
+                    currentMorse = "";
+                }
+                else if (btype === "DOT") {
+                    currentMorse += ".";
+                    lastAction = "DOT (.)";
+                    lastBlinkEndTime = timeMs;
+                    beep(1000, 100);
+                }
+                else if (btype === "DASH") {
+                    currentMorse += "-";
+                    lastAction = "DASH (-)";
+                    lastBlinkEndTime = timeMs;
+                    beep(800, 300);
+                }
+                else if (btype === "INVALID") {
+                    lastAction = `Invalid (${duration.toFixed(0)}ms)`;
+                }
+                else if (btype === "NOISE") {
+                    lastAction = "Ignored";
+                }
+
+                if (btype === "DOT" || btype === "DASH") {
+                    lastBlinkEndTime = timeMs;
+                }
+                updateUI();
+            }
+        }
+    }
+
+    // Countdown display
+    const timeMs = performance.now();
+    let countdown = "";
+    if (currentMorse && !eyeClosed && systemStatus === "ACTIVE") {
+        const t = AUTO_LETTER_GAP - (timeMs - lastBlinkEndTime);
+        if (t > 0) countdown = `Letter in ${(t/1000).toFixed(1)}s`;
+    } else if (currentWord && !currentMorse && !eyeClosed && systemStatus === "ACTIVE") {
+        const t = AUTO_WORD_GAP - (timeMs - lastBlinkEndTime);
+        if (t > 0) countdown = `Speak in ${(t/1000).toFixed(1)}s`;
+    }
+    if (countdown) {
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(10, canvas.height - 40, 200, 30);
+        ctx.fillStyle = "#0f0";
+        ctx.font = "bold 16px sans-serif";
+        ctx.fillText(countdown, 20, canvas.height - 20);
+    }
+}
+
+// ========== STARTUP ==========
+async function startApp(silent = false) {
+    useVoice = !silent;
+    initAudio();
+    document.getElementById('startScreen').style.display = 'none';
+
+    video = document.getElementById('videoElement');
+    canvas = document.getElementById('canvasOverlay');
+    ctx = canvas.getContext('2d');
+
+    // Set canvas size to match video container
+    const container = document.getElementById('container');
+    const videoHeight = container.clientHeight * 0.6;
+    canvas.width = container.clientWidth;
+    canvas.height = videoHeight;
+
+    // Initialize Face Mesh
+    faceMesh = new FaceMesh({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+    }});
+    faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+    faceMesh.onResults(onResults);
+
+    // Initialize camera
+    camera = new Camera(video, {
+        onFrame: async () => {
+            await faceMesh.send({image: video});
+        },
+        width: 640,
+        height: 480,
+        facingMode: "user" // Front camera
+    });
+
+    try {
+        await camera.start();
+        lastAction = "Camera started";
+        updateUI();
+        // Auto prompt calibration
+        setTimeout(() => {
+            if (!calibrated) toggleCal();
+        }, 2000);
+    } catch (err) {
+        alert("Camera error: " + err.message);
+        console.error(err);
+    }
+}
+
+// Handle resize
+window.addEventListener('resize', () => {
+    if (canvas) {
+        const container = document.getElementById('container');
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight * 0.6;
+    }
+});
+</script>
+</body>
+</html>
